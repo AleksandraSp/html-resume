@@ -38,20 +38,21 @@ defmodule ContentToDummy do
 
   ## Examples
 
-    iex> ContentToDummy.copyFile("test/resume_test.html")
+    iex> ContentToDummy.encodeResume("test/resume_test.html")
     ~s(<html><body lang=\"en\"><div><span class=\"encode\">c5cc431075e9e932934849dfa</span><span>We can show this</span></div></body></html>)
   """
-  @spec copyFile([char]) :: [char]
-  def copyFile(filePath) do
+  @spec encodeResume([char]) :: [char]
+  def encodeResume(filePath) do
     case File.read(filePath) do
       {:ok, body} ->
         Floki.parse(body)
-        |> tupleDoMagic
+        |> processNode
 
       {:error, reason} ->
         IO.puts("Copy of file fails: " <> reason)
     end
     |> Floki.raw_html()
+    |> saveFile
   end
 
   @doc """
@@ -69,58 +70,21 @@ defmodule ContentToDummy do
     {"span", [{"class", "encode"}], ["689459d738f8c88a3a48aa9e3"]}
 
   """
-  @spec processNode({} | []) :: [char]
-  def processNode(node) do
-    cond do
-      is_tuple(node) ->
-        {n, a, text} = node
-        {n, a, tupleDoMagic(text)}
-
-      is_list(node) ->
-        Enum.map(node, fn listnode ->
-          {n, a, text} = listnode
-          {n, a, tupleDoMagic(text)}
-        end)
-
-      true ->
-        :undefined
-    end
-  end
-
-  def tupleDoMagic(tupleOne, doEncode \\ true) do
+  @spec processNode({} | [] | [char]) :: [char]
+  def processNode(tupleOne, doEncode \\ true) do
     cond do
       is_binary(tupleOne) ->
         if doEncode, do: doMagic(tupleOne), else: tupleOne
 
       is_tuple(tupleOne) ->
         {n, a, text} = tupleOne
-        {n, a, tupleDoMagic(text, hasEncodeClass(a))}
+        {n, a, processNode(text, hasEncodeClass(a))}
 
       is_list(tupleOne) ->
-        Enum.map(tupleOne, fn a -> tupleDoMagic(a, doEncode) end)
+        Enum.map(tupleOne, fn a -> processNode(a, doEncode) end)
 
       true ->
-        "dummy"
-    end
-  end
-
-  @doc """
-  Saves content to file.
-
-  ## Examples
-
-    iex> ContentToDummy.saveFile("aaa")
-    "aaa"
-  """
-  @spec saveFile([char]) :: [char] | nil
-  def saveFile(content) do
-    case File.write(@encoded_file, content) do
-      :ok ->
-        content
-
-      {:error, res} ->
-        IO.inspect(res)
-        nil
+        :unsopported_node_format
     end
   end
 
@@ -149,5 +113,25 @@ defmodule ContentToDummy do
         key === ~s(class) and String.contains?(val, [@encode_class_label])
       end
     end)
+  end
+
+  @doc """
+  Saves content to file.
+
+  ## Examples
+
+    iex> ContentToDummy.saveFile("aaa")
+    "aaa"
+  """
+  @spec saveFile([char]) :: [char] | nil
+  def saveFile(content) do
+    case File.write(@encoded_file, content) do
+      :ok ->
+        content
+
+      {:error, res} ->
+        IO.inspect(res)
+        nil
+    end
   end
 end

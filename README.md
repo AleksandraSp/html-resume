@@ -15,7 +15,7 @@ We need to compile and run the Elixir module:
 & mix deps.get
 & mix test
 & iex -S mix
-iex> ContentToDummy.copyFile("assets/resume.html") |> ContentToDummy.saveFile
+iex> ContentToDummy.encodeResume("assets/resume.html")
 ```
 By this time a new resulting file `resume_encoded.html` is added to `assets` dir, which we can now send it around as a mock.
 
