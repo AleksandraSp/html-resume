@@ -1,4 +1,7 @@
 defmodule ContentToDummy do
+  @encoded_file 'assets/resume_encoded.html'
+  @encode_class_label ~s(encode)
+
   @moduledoc """
   Converts text inside html tags to unreadable text.
 
@@ -21,11 +24,12 @@ defmodule ContentToDummy do
           |> Base.encode16()
           |> String.downcase()
           |> String.slice(5, 25)
+
         true ->
           content
       end
     catch
-      :exit, reason -> IO.puts("do magic fails: " <> reason)
+      :exit, reason -> IO.puts("Do magic fails: " <> reason)
     end
   end
 
@@ -38,26 +42,66 @@ defmodule ContentToDummy do
     ~s(<html><body lang=\"en\"><div><span class=\"encode\">c5cc431075e9e932934849dfa</span><span>We can show this</span></div></body></html>)
   """
   @spec copyFile([char]) :: [char]
-  def copyFile(htmlFile) do
-    case File.read(htmlFile) do
+  def copyFile(filePath) do
+    case File.read(filePath) do
       {:ok, body} ->
         Floki.parse(body)
-        |> (fn(node) ->
-            cond do
-              is_tuple(node) ->
-                {n, a, text} = node
-                {n, a, tupleDoMagic(text)}
-              is_list(node) ->
-                Enum.map(node, fn(listnode) ->
-                  {n, a, text} = listnode
-                  {n, a, doMagic(text)}
-                end)
-              true -> :undefined
-            end
-          end).()
-      {:error, reason} -> IO.puts("copy file fails: " <> reason)
+        |> tupleDoMagic
+
+      {:error, reason} ->
+        IO.puts("Copy of file fails: " <> reason)
     end
-    |> Floki.raw_html
+    |> Floki.raw_html()
+  end
+
+  @doc """
+  Processes one note of the parsed HTML file . Node can be represented as tuple
+  or a list if it is on deeper level.
+
+    ## Examples
+    iex> ContentToDummy.processNode([{"i", [{"class", "fa fa-birthday-cake"}], []}, {"span", [{"class", "encode"}], ["something"]}]);
+    [{"i", [{"class", "fa fa-birthday-cake"}], []}, {"span", [{"class", "encode"}], ["689459d738f8c88a3a48aa9e3"]}]
+
+    iex> ContentToDummy.processNode({"i", [{"class", "fa fa-birthday-cake"}], []});
+    {"i", [{"class", "fa fa-birthday-cake"}], []}
+
+    iex> ContentToDummy.processNode({"span", [{"class", "encode"}], ["something"]});
+    {"span", [{"class", "encode"}], ["689459d738f8c88a3a48aa9e3"]}
+
+  """
+  @spec processNode({} | []) :: [char]
+  def processNode(node) do
+    cond do
+      is_tuple(node) ->
+        {n, a, text} = node
+        {n, a, tupleDoMagic(text)}
+
+      is_list(node) ->
+        Enum.map(node, fn listnode ->
+          {n, a, text} = listnode
+          {n, a, tupleDoMagic(text)}
+        end)
+
+      true ->
+        :undefined
+    end
+  end
+
+  def tupleDoMagic(tupleOne, doEncode \\ true) do
+    cond do
+      is_binary(tupleOne) ->
+        if doEncode, do: doMagic(tupleOne), else: tupleOne
+
+      is_tuple(tupleOne) ->
+        {n, a, text} = tupleOne
+        {n, a, tupleDoMagic(text, hasEncodeClass(a))}
+
+      is_list(tupleOne) ->
+        Enum.map(tupleOne, fn a -> tupleDoMagic(a, doEncode) end)
+
+      true ->
+        "dummy"
+    end
   end
 
   @doc """
@@ -70,25 +114,13 @@ defmodule ContentToDummy do
   """
   @spec saveFile([char]) :: [char] | nil
   def saveFile(content) do
-    case File.write("assets/resume_encoded.html", content) do
-      :ok -> content
+    case File.write(@encoded_file, content) do
+      :ok ->
+        content
+
       {:error, res} ->
         IO.inspect(res)
         nil
-    end
-  end
-
-  def tupleDoMagic(tupleOne, doEncode \\ true) do
-    cond do
-      is_binary(tupleOne) ->
-        if doEncode, do: doMagic(tupleOne), else: tupleOne
-      is_tuple(tupleOne) ->
-        {n, a, text} = tupleOne
-        {n, a, tupleDoMagic(text, hasEncodeClass(a))}
-      is_list(tupleOne) ->
-        Enum.map(tupleOne, fn(a) -> tupleDoMagic(a, doEncode) end)
-      true ->
-        "dummy"
     end
   end
 
@@ -100,6 +132,9 @@ defmodule ContentToDummy do
     iex> ContentToDummy.hasEncodeClass([{"class", "encode"}])
     true
 
+    iex> ContentToDummy.hasEncodeClass([{"refs", "smth"},{"class", "encode"}])
+    true
+
     iex> ContentToDummy.hasEncodeClass([{"class", "en1code"}])
     false
 
@@ -107,11 +142,11 @@ defmodule ContentToDummy do
     false
   """
   def hasEncodeClass(arr) do
-    Enum.reduce(arr, false, fn ({key, val}, acc) ->
+    Enum.reduce(arr, false, fn {key, val}, acc ->
       if acc === true do
         acc
       else
-        (key === ~s(class) and String.contains?(val, [~s(encode)]))
+        key === ~s(class) and String.contains?(val, [@encode_class_label])
       end
     end)
   end
